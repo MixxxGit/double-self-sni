@@ -1,31 +1,31 @@
-Отлично! Вот пошаговое руководство, созданное на основе предоставленного видео. Оно точно повторяет все действия, включая команды и конфигурации для обоих серверов.
-
 ### Введение
 
-В этом руководстве мы настроим два сервера: один в Санкт-Петербурге, другой в Германии. На оба сервера будет установлен Nginx с SSL-сертификатами от Let's Encrypt и панель управления 3X-UI. Затем мы настроим маршрутизацию трафика таким образом, чтобы сервер в Германии (Франкфурт) перенаправлял трафик через сервер в России (Санкт-Петербург).
-
-*   **Сервер 1 (СПБ):** Выполняет роль конечной точки (прокси).
-*   **Сервер 2 (Франкфурт):** Выполняет роль входной точки, которая перенаправляет трафик на Сервер 1.
+В этом руководстве мы настроим два сервера: один в Санкт-Петербурге (далее "СПБ Сервер") и второй во Франкфурте, Германия (далее "Франкфурт сервер"). На каждом сервере будет установлен веб-сервер Nginx, получен SSL-сертификат с помощью Certbot и развернута панель управления прокси 3X-UI. Затем мы настроим их для совместной работы.
 
 ---
 
-### Часть 1. Настройка Сервера 1 (Санкт-Петербург)
+### Часть 1: Настройка сервера в Санкт-Петербурге (СПБ Сервер)
 
-#### 1.1. Подключение к серверу и обновление системы
+#### Шаг 1.1: Подключение к серверу и обновление системы
 
 1.  Подключитесь к вашему серверу в Санкт-Петербурге через SSH.
-2.  Обновите список пакетов:
+2.  Обновите списки пакетов:
 
     ```bash
     apt update
     ```
 
     **Ожидаемый вывод (сокращенный):**
-    > ...
-    > Reading package lists... Done
-    > Building dependency tree... Done
-    > Reading state information... Done
-    > 242 packages can be upgraded. Run 'apt list --upgradable' to see them.
+    ```
+    Get:1 http://security.ubuntu.com/ubuntu noble-security InRelease [120 kB]
+    ...
+    Get:20 http://archive.ubuntu.com/ubuntu noble-backports/multiverse amd64 c-n-f Metadata [108 B]
+    Fetched 40.9 MB in 5s (9,367 kB/s)
+    Reading package lists... Done
+    Building dependency tree... Done
+    Reading state information... Done
+    242 packages can be upgraded. Run 'apt list --upgradable' to see them.
+    ```
 
 3.  Обновите установленные пакеты:
 
@@ -33,75 +33,98 @@
     apt upgrade
     ```
 
-    Система запросит подтверждение. Введите `y` и нажмите Enter.
+    Во время выполнения команды система запросит подтверждение. Введите `Y` и нажмите Enter.
 
     **Ожидаемый вывод (сокращенный):**
-    > After this operation, 866 MB of additional disk space will be used.
-    > Do you want to continue? [Y/n] y
-    > ...
-    > Processing triggers for man-db (2.12.0-4ubuntu2) ...
-    > Processing triggers for install-info (7.1-1build1) ...
-    > Processing triggers for libc-bin (2.39-0ubuntu8.1) ...
-    > root@vkinggiants:~#
+    ```
+    ...
+    The following packages will be upgraded:
+      amd64-microcode ...
+    ...
+    After this operation, 360 MB of additional disk space will be used.
+    Do you want to continue? [Y/n] Y
+    Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 md-tool all 0.9.0-6ubuntu0.1 [20.6 kB]
+    ...
+    Get:242 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 linux-firmware 20240318.git3b12b295-0ubuntu2.10 [110 MB]
+    ...
+    Processing triggers for systemd (255.4-1ubuntu8.1) ...
+    Processing triggers for ufw (0.36.2-4) ...
+    ...
+    Pending kernel upgrade!
+    Running kernel version:
+      6.8.0-40-generic
+    Diagnostics:
+    The currently running kernel version is not the expected kernel version 6.8.0-38-generic.
+    Restarting the system to load the new kernel will not be handled automatically, so you should consider rebooting.
+    ...
+    *** System restart required ***
+    ```
 
-#### 1.2. Проверка IP-адреса и привязка домена
-
-1.  Убедитесь, что ваш домен (в примере `test.experced.ru`) указывает на IP-адрес этого сервера. Сначала проверьте, на какой IP разрешается домен:
+4.  Проверьте, что ваш домен (`test.experced.ru`) указывает на IP-адрес сервера:
 
     ```bash
     nslookup test.experced.ru
     ```
 
     **Ожидаемый вывод:**
-    > Server:		127.0.0.53
-    > Address:	127.0.0.53#53
-    > 
-    > Non-authoritative answer:
-    > Name:	test.experced.ru
-    > Address: 103.71.22.37
+    ```
+    Server:		127.0.0.53
+    Address:	127.0.0.53#53
 
-2.  Проверьте IP-адрес вашего сервера:
+    Non-authoritative answer:
+    Name:	test.experced.ru
+    Address: 103.71.22.37
+    ```
+
+5.  Проверьте IP-адрес сервера:
 
     ```bash
     ip a
     ```
 
     **Ожидаемый вывод (сокращенный):**
-    > ...
-    > 3: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
-    >     link/ether 5e:b1:d0:c1:1a:c1 brd ff:ff:ff:ff:ff:ff
-    >     inet 103.71.22.37/20 brd 103.71.31.255 scope global ens3
-    > ...
+    ```
+    ...
+    2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+        link/ether 52:54:00:01:04:3d brd ff:ff:ff:ff:ff:ff
+        inet 103.71.22.37/24 brd 103.71.22.255 scope global ens3
+           valid_lft forever preferred_lft forever
+    ...
+    ```
 
-3.  В панели управления вашего DNS-провайдера создайте A-запись, указывающую на IP-адрес сервера. В видео используются следующие параметры:
-    *   **Тип:** `A`
-    *   **Имя:** `test`
-    *   **IPv4-адрес:** `103.71.22.37`
-    *   **TTL:** `300`
+#### Шаг 1.2: Установка Nginx и Certbot
 
-#### 1.3. Установка Nginx и Certbot
-
-1.  Установите Nginx и Certbot с плагином для Nginx:
+1.  В окне браузера открыта инструкция по адресу `https://wiki.kasta.pro/h/nastrojka-sni-sajta-dlja-reality`. Пользователь копирует команду для установки Nginx и Certbot.
+2.  Выполните команду в терминале:
 
     ```bash
     sudo apt install nginx certbot python3-certbot-nginx
     ```
-
-    Система запросит подтверждение. Введите `y` и нажмите Enter.
-
+    На запрос подтверждения введите `Y` и нажмите Enter.
+    
     **Ожидаемый вывод (сокращенный):**
-    > After this operation, 7,400 kB of additional disk space will be used.
-    > Do you want to continue? [Y/n] y
-    > ...
-    > Setting up python3-certbot-nginx (2.9.0-1) ...
-    > Processing triggers for ufw (0.36.2-1ubuntu1) ...
-    > Scanning processes...
-    > Scanning linux images...
-    > [ok]
+    ```
+    ...
+    The following NEW packages will be installed:
+      nginx-common python3-acme python3-certbot python3-certbot-nginx python3-configargparse python3-josepy python3-parsedatetime python3-rfc3339 python3-tz
+    ...
+    After this operation, 7,400 kB of additional disk space will be used.
+    Do you want to continue? [Y/n] Y
+    Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 nginx-common all 1.26.0-2ubuntu0.1 [41.4 kB]
+    ...
+    Setting up nginx (1.26.0-2ubuntu0.1) ...
+    Setting up python3-certbot-nginx (2.8.0-1_all.deb) ...
+    Created symlink /etc/systemd/system/timers.target.wants/certbot.timer → /usr/lib/systemd/system/certbot.timer.
+    Setting up certbot (2.8.0-1) ...
+    ...
+    Processing triggers for ufw (0.36.2-4) ...
+    Scanning processes...
+    [ OK ]
+    ```
 
-#### 1.4. Настройка Nginx и получение SSL-сертификата
+#### Шаг 1.3: Настройка Nginx и получение SSL-сертификата
 
-1.  Удалите стандартную конфигурацию Nginx:
+1.  Удалите стандартный конфигурационный файл Nginx:
 
     ```bash
     rm /etc/nginx/sites-enabled/default
@@ -113,39 +136,33 @@
     mkdir /var/www/html/site
     ```
 
-3.  Создайте файл `index.html` в этой директории. В видео используется SFTP-клиент для загрузки файла. Содержимое файла `index.html`:
-
+3.  В браузере пользователь открывает ChatGPT и запрашивает "Сгенерируй простой HTML сайт".
+4.  Создайте файл `index.html` в этой директории. В видео это делается через SFTP-клиент Termius:
+    *   В локальной директории `~/Downloads/нека` файл с длинным именем переименовывается в `index.html`.
+    *   Этот файл копируется на сервер в директорию `/var/www/html/site`.
+    
+    Содержимое файла `index.html` должно быть примерно таким:
     ```html
     <!DOCTYPE html>
-    <html lang="en">
+    <html lang="ru">
     <head>
         <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
         <title>Простой Одностраничный Сайт</title>
-        <style>
-            body { font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background-color: #f0f0f0; }
-            .container { text-align: center; padding: 20px; border-radius: 8px; background-color: white; box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-            h1 { color: #333; }
-        </style>
     </head>
     <body>
-        <div class="container">
-            <h1>Hello World</h1>
-            <p>Это простой одностраничный HTML-сайт.</p>
-        </div>
+        <h1>Добро пожаловать на мой сайт!</h1>
+        <p>Это простой одностраничный HTML-сайт.</p>
     </body>
     </html>
     ```
-    
-    С помощью SFTP-клиента переименуйте локальный файл в `index.html` и загрузите его на сервер в директорию `/var/www/html/site`.
 
-4.  Создайте конфигурационный файл Nginx для вашего домена:
+5.  Создайте новый конфигурационный файл для Nginx:
 
     ```bash
     nano /etc/nginx/sites-available/sni.conf
     ```
 
-5.  Вставьте в редактор следующую конфигурацию для перенаправления HTTP на HTTPS. Замените `доменное имя` на ваш домен (`test.experced.ru`).
+6.  Вставьте в редактор `nano` следующую конфигурацию, заменив `доменное имя` на `test.experced.ru`:
 
     ```nginx
     server {
@@ -159,51 +176,56 @@
         return 404;
     }
     ```
+    Нажмите `Ctrl+X`, затем `Y` и `Enter`, чтобы сохранить файл и выйти.
 
-6.  Сохраните файл и выйдите из редактора (Ctrl+X, затем Y, затем Enter).
-
-7.  Создайте символическую ссылку, чтобы активировать сайт:
+7.  Создайте символическую ссылку, чтобы включить сайт:
 
     ```bash
     ln -s /etc/nginx/sites-available/sni.conf /etc/nginx/sites-enabled/
     ```
 
-8.  Запустите Certbot для получения SSL-сертификата:
+8.  Получите SSL-сертификат с помощью Certbot:
 
     ```bash
     certbot --nginx -d test.experced.ru
     ```
-
-    В процессе выполнения Certbot задаст несколько вопросов:
-    *   Введите email-адрес: `testadawd@mail.ru`
-    *   Согласитесь с условиями обслуживания: `y`
-    *   Согласитесь на рассылку от EFF: `y`
+    
+    *   Введите email для уведомлений: `testasdasd@mail.ru`
+    *   Согласитесь с условиями использования (Terms of Service): `Y`
+    *   Согласитесь на рассылку новостей (необязательно): `Y`
 
     **Ожидаемый вывод (сокращенный):**
-    > Successfully deployed certificate for test.experced.ru to /etc/nginx/sites-enabled/sni.conf
-    > Congratulations! You have successfully enabled HTTPS on https://test.experced.ru
+    ```
+    ...
+    Successfully received certificate.
+    Certificate is saved at: /etc/letsencrypt/live/test.experced.ru/fullchain.pem
+    Key is saved at:         /etc/letsencrypt/live/test.experced.ru/privkey.pem
+    This certificate expires on 2025-01-20.
+    ...
+    Deploying certificate
+    Successfully deployed certificate for test.experced.ru to /etc/nginx/sites-enabled/sni.conf
+    Congratulations! You have successfully enabled HTTPS on https://test.experced.ru
+    ```
 
-#### 1.5. Финальная конфигурация Nginx для проксирования
-
-1.  Откройте конфигурационный файл Nginx снова. Certbot его изменил, но мы заменим его содержимое.
+9.  Снова откройте конфигурационный файл для редактирования:
 
     ```bash
     nano /etc/nginx/sites-available/sni.conf
     ```
 
-2.  Полностью удалите содержимое файла и вставьте следующую конфигурацию. Замените `доменное имя` на ваш домен (`test.experced.ru`).
+10. Certbot автоматически изменил файл. Теперь замените всё его содержимое на конфигурацию ниже. В браузере пользователь копирует эту конфигурацию из той же инструкции на `wiki.kasta.pro`. Обязательно замените все вхождения `доменное имя` на ваш домен `test.experced.ru`.
 
     ```nginx
     server {
         listen 127.0.0.1:8443 ssl http2 proxy_protocol;
-        server_name доменное имя;
+        server_name test.experced.ru;
 
-        ssl_certificate /etc/letsencrypt/live/доменное имя/fullchain.pem;
-        ssl_certificate_key /etc/letsencrypt/live/доменное имя/privkey.pem;
+        ssl_certificate /etc/letsencrypt/live/test.experced.ru/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/test.experced.ru/privkey.pem;
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_prefer_server_ciphers on;
-        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+        ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
         ssl_session_cache shared:SSL:1m;
         ssl_session_timeout 1d;
         ssl_session_tickets off;
@@ -221,152 +243,194 @@
         }
     }
     ```
+    Сохраните файл и выйдите (`Ctrl+X`, `Y`, `Enter`).
 
-3.  Замените все вхождения `доменное имя` на `test.experced.ru`. Сохраните и закройте файл.
-
-4.  Проверьте синтаксис конфигурации Nginx:
+11. Проверьте синтаксис конфигурации Nginx:
 
     ```bash
     nginx -t
     ```
 
     **Ожидаемый вывод:**
-    > nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-    > nginx: configuration file /etc/nginx/nginx.conf test is successful
+    ```
+    nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+    nginx: configuration file /etc/nginx/nginx.conf test is successful
+    ```
 
-5.  Перезапустите Nginx, чтобы применить изменения:
+12. Перезапустите Nginx:
 
     ```bash
     systemctl restart nginx
     ```
 
-#### 1.6. Установка и настройка 3X-UI
+#### Шаг 1.4: Установка панели 3X-UI
 
-1.  Выполните команду для установки панели 3X-UI:
+1.  В браузере пользователь переходит на `https://github.com/MHSanaei/3x-ui` и копирует команду для установки.
+2.  Выполните команду в терминале:
 
     ```bash
-    bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
     ```
 
-2.  В процессе установки скрипт задаст вопросы:
-    *   `Would you like to customize the Panel Port settings? (If not, a random port will be applied) (y/n):` Введите `y`.
-    *   `Please set up the panel port:` Введите `8080`.
+    *   На вопрос `Would you like to customize the Panel Port settings?` ответьте `y`.
+    *   На вопрос `Please set up the panel port:` введите `8080`.
 
-    **Ожидаемый вывод (сохращенный):**
-    > ...
-    > This is a fresh installation, generating random login info for security concerns:
-    > Username: W6THI5MX9Y
-    > Password: 5M8oUqojgD9
-    > 
-    > Access URL: http://103.71.22.37:8080/w6thi5mx9y/
-    > ...
-    > x-ui v2.1.1 Installation Finished, It's running now...
+    **Ожидаемый вывод (сокращенный):**
+    ```
+    ...
+    /usr/local/x-ui/x-ui-linux-amd64.tar.gz          100%[=======================================================================================================>]  11.43M   258KB/s    in 8.2s
+    ...
+    Username and password updated successfully
+    This is a fresh installation, generating random login info for security concerns:
+    Username: WETHEMAVSY
+    Password: NMdUujgth
+    ========================================
+    Access URL: http://103.71.22.37:8080/wacmbNbUhUOVGzGO
+    ========================================
+    ...
+    x-ui v2.1.1 Installation finished, it is running now...
+    ```
 
-3.  Откройте в браузере предоставленный `Access URL` и войдите в панель, используя сгенерированные имя пользователя и пароль.
-4.  Перейдите в раздел **Inbounds** и нажмите `+ Add Inbound`.
-5.  Настройте входящее подключение:
-    *   **Port:** `443`
-    *   **Security:** `reality`
-    *   **Client:** Нажмите `+`, в поле `Email` введите `Test`.
+#### Шаг 1.5: Настройка 3X-UI
+
+1.  Откройте в браузере URL-адрес для доступа к панели, указанный в выводе (в данном случае `http://103.71.22.37:8080/wacmbNbUhUOVGzGO`).
+2.  Введите `Username` и `Password` из терминала (`WETHEMAVSY` и `NMdUujgth`) и нажмите "Log In".
+3.  Перейдите в раздел "Inbounds" (Входящие).
+4.  Нажмите кнопку "Add Inbound" (Добавить входящее).
+5.  Заполните форму следующим образом:
+    *   **Remark (Примечание):** `Test`
+    *   **Port (Порт):** `443`
+    *   **Security (Безопасность):** `reality`
+    *   Нажмите на иконку `+` в секции **Client** (Клиент).
+    *   **Email:** `Test`
+    *   **Subscription (Подписка):** `Test`
     *   **Flow:** `xtls-rprx-vision`
-    *   **uTLS:** `firefox`
-    *   **Target:** `127.0.0.1:9000`
+    *   **Target (Цель):** `127.0.0.1:9000`
     *   **SNI:** `test.experced.ru`
-    *   Нажмите `Get New Keys`.
-    *   Включите **Sniffing**.
-    *   Нажмите **Create**.
-6.  В списке Inbounds появится новое правило. Нажмите на иконку информации (i), чтобы увидеть детали, и скопируйте **Subscription URL**. Этот URL понадобится нам позже.
+    *   Нажмите "Get New Keys" (Получить новые ключи).
+    *   Нажмите "Create" (Создать).
 
-#### 1.7. Перезагрузка сервера
-Перезагрузите сервер, чтобы применились все обновления ядра.
+6.  Перейдите в раздел "Outbounds" (Исходящие).
+    *   Нажмите "Add Outbound".
+    *   Переключитесь на вкладку "JSON".
+    *   Вернитесь в "Inbounds", найдите созданное правило, нажмите на меню "..." и выберите "Client". Скопируйте URL-ссылку `vless://...`.
+    *   Вставьте скопированную ссылку в поле "Link" на странице "Add Outbound" и нажмите на иконку импорта справа.
+    *   Нажмите "Add Outbound".
 
-```bash
-reboot
-```
+7.  Перейдите в "Routing Rules" (Правила маршрутизации).
+    *   Нажмите "Add Rule".
+    *   Заполните форму:
+        *   **Network (Сеть):** Выберите `TCP,UDP`.
+        *   **Inbound Tags (Теги входящих):** `inbound-443`.
+        *   **Outbound Tag (Тег исходящего):** `Test`.
+    *   Нажмите "Add Rule".
+
+8.  Сохраните и перезапустите панель.
+    *   Вверху страницы появится уведомление `Every change made here needs to be saved`. Нажмите "Save".
+    *   Затем нажмите "Restart Panel" и подтвердите действие.
 
 ---
 
-### Часть 2. Настройка Сервера 2 (Франкфурт)
+### Часть 2: Настройка сервера в Германии (Франкфурт сервер)
 
-#### 2.1. Подключение к серверу и обновление системы
+Процесс настройки второго сервера почти идентичен первому, но с другими доменным именем и IP-адресом. **Не пропускайте шаги, выполняйте их полностью.**
 
-1.  Подключитесь к вашему серверу во Франкфурте через SSH.
-2.  Обновите список пакетов:
+#### Шаг 2.1: Подключение к серверу и обновление системы
+
+1.  Подключитесь к вашему серверу в Франкфурте через SSH.
+2.  Обновите списки пакетов:
 
     ```bash
-    apt-get update
+    apt update
     ```
+
     **Ожидаемый вывод (сокращенный):**
-    > ...
-    > Reading package lists... Done
-    > 242 packages can be upgraded. Run 'apt list --upgradable' to see them.
+    ```
+    Get:1 http://security.ubuntu.com/ubuntu noble-security InRelease [120 kB]
+    ...
+    Fetched 40.9 MB in 5s (9,367 kB/s)
+    Reading package lists... Done
+    242 packages can be upgraded. Run 'apt list --upgradable' to see them.
+    ```
 
 3.  Обновите установленные пакеты:
 
     ```bash
-    apt-get upgrade
+    apt upgrade
     ```
-
-    Система запросит подтверждение. Введите `y` и нажмите Enter.
+    На запрос подтверждения введите `Y` и нажмите Enter.
 
     **Ожидаемый вывод (сокращенный):**
-    > After this operation, 386 MB of additional disk space will be used.
-    > Do you want to continue? [Y/n] y
-    > ...
-    > Processing triggers for systemd (255.4-1ubuntu3.1) ...
-    > Processing triggers for initramfs-tools (0.142ubuntu1.1) ...
-    > root@server-white:~#
+    ```
+    ...
+    The following packages will be upgraded:
+      amd64-microcode ...
+    ...
+    After this operation, 360 MB of additional disk space will be used.
+    Do you want to continue? [Y/n] Y
+    Get:1 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 md-tool all 0.9.0-6ubuntu0.1 [20.6 kB]
+    ...
+    Get:242 http://archive.ubuntu.com/ubuntu noble-updates/main amd64 linux-firmware 20240318.git3b12b295-0ubuntu2.10 [110 MB]
+    ...
+    *** System restart required ***
+    ```
 
-#### 2.2. Проверка IP-адреса и привязка домена
-
-1.  Убедитесь, что ваш второй домен (в примере `test2.experced.ru`) указывает на IP-адрес этого сервера:
+4.  Проверьте, что ваш второй домен (`test2.experced.ru`) указывает на IP-адрес этого сервера:
 
     ```bash
     nslookup test2.experced.ru
     ```
 
     **Ожидаемый вывод:**
-    > Server:		127.0.0.53
-    > Address:	127.0.0.53#53
-    > 
-    > Non-authoritative answer:
-    > Name:	test2.experced.ru
-    > Address: 79.137.202.37
+    ```
+    Server:		127.0.0.53
+    Address:	127.0.0.53#53
 
-2.  Проверьте IP-адрес вашего сервера:
+    Non-authoritative answer:
+    Name:	test2.experced.ru
+    Address: 79.137.202.37
+    ```
+
+5.  Проверьте IP-адрес сервера:
 
     ```bash
     ip a
     ```
 
     **Ожидаемый вывод (сокращенный):**
-    > ...
-    > 2: eth0: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
-    >     link/ether 00:00:00:00:00:00 brd ff:ff:ff:ff:ff:ff
-    >     inet 79.137.202.37/24 scope global eth0
-    > ...
+    ```
+    ...
+    2: ens3: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1500 qdisc fq_codel state UP group default qlen 1000
+        link/ether 52:54:00:01:04:3d brd ff:ff:ff:ff:ff:ff
+        inet 79.137.202.37/24 brd 79.137.202.255 scope global ens3
+           valid_lft forever preferred_lft forever
+    ...
+    ```
 
-#### 2.3. Установка Nginx и Certbot
+#### Шаг 2.2: Установка Nginx и Certbot
 
-1.  Установите Nginx и Certbot с плагином для Nginx:
+1.  Выполните команду в терминале:
 
     ```bash
     sudo apt install nginx certbot python3-certbot-nginx
     ```
-
-    Система запросит подтверждение. Введите `y` и нажмите Enter.
-
+    На запрос подтверждения введите `Y` и нажмите Enter.
+    
     **Ожидаемый вывод (сокращенный):**
-    > After this operation, 7,400 kB of additional disk space will be used.
-    > Do you want to continue? [Y/n] y
-    > ...
-    > Processing triggers for ufw (0.36.2-1) ...
-    > Scanning processes...
-    > [ok]
+    ```
+    ...
+    The following NEW packages will be installed:
+      nginx-common python3-acme python3-certbot python3-certbot-nginx python3-configargparse python3-josepy python3-parsedatetime python3-rfc3339 python3-tz
+    ...
+    After this operation, 7,400 kB of additional disk space will be used.
+    Do you want to continue? [Y/n] Y
+    ...
+    [ OK ]
+    ```
 
-#### 2.4. Настройка Nginx и получение SSL-сертификата
+#### Шаг 2.3: Настройка Nginx и получение SSL-сертификата
 
-1.  Удалите стандартную конфигурацию Nginx:
+1.  Удалите стандартный конфигурационный файл Nginx:
 
     ```bash
     rm /etc/nginx/sites-enabled/default
@@ -375,18 +439,18 @@ reboot
 2.  Создайте директорию для вашего сайта:
 
     ```bash
-    mkdir /var/www/html/site
+    mkdir /var/www/html/site2
     ```
 
-3.  Загрузите файл `index.html` (с тем же содержимым, что и для Сервера 1) в директорию `/var/www/html/site` с помощью SFTP.
+3.  Скопируйте файл `index.html` на сервер в директорию `/var/www/html/site2` через SFTP.
 
-4.  Создайте конфигурационный файл Nginx для второго домена:
+4.  Создайте новый конфигурационный файл для Nginx:
 
     ```bash
     nano /etc/nginx/sites-available/sni.conf
     ```
 
-5.  Вставьте в редактор конфигурацию для перенаправления HTTP на HTTPS. Замените `доменное имя` на ваш второй домен (`test2.experced.ru`).
+5.  Вставьте в редактор `nano` следующую конфигурацию, заменив `доменное имя` на `test2.experced.ru`:
 
     ```nginx
     server {
@@ -400,39 +464,43 @@ reboot
         return 404;
     }
     ```
+    Нажмите `Ctrl+X`, затем `Y` и `Enter`, чтобы сохранить файл и выйти.
 
-6.  Сохраните файл и выйдите из редактора (Ctrl+X, затем Y, затем Enter).
-
-7.  Создайте символическую ссылку, чтобы активировать сайт:
+6.  Создайте символическую ссылку, чтобы включить сайт:
 
     ```bash
     ln -s /etc/nginx/sites-available/sni.conf /etc/nginx/sites-enabled/
     ```
 
-8.  Запустите Certbot для получения SSL-сертификата:
+7.  Получите SSL-сертификат с помощью Certbot для второго домена:
 
     ```bash
     certbot --nginx -d test2.experced.ru
     ```
-
-    В процессе выполнения Certbot задаст несколько вопросов:
-    *   Введите email-адрес: `testadawd@mail.ru`
-    *   Согласитесь с условиями обслуживания: `y`
-    *   Согласитесь на рассылку от EFF: `y`
+    
+    *   Введите email для уведомлений: `testasdasd@mail.ru`
+    *   Согласитесь с условиями использования (Terms of Service): `Y`
+    *   Согласитесь на рассылку новостей (необязательно): `Y`
 
     **Ожидаемый вывод (сокращенный):**
-    > Successfully deployed certificate for test2.experced.ru to /etc/nginx/sites-enabled/sni.conf
-    > Congratulations! You have successfully enabled HTTPS on https://test2.experced.ru
+    ```
+    ...
+    Successfully received certificate.
+    Certificate is saved at: /etc/letsencrypt/live/test2.experced.ru/fullchain.pem
+    Key is saved at:         /etc/letsencrypt/live/test2.experced.ru/privkey.pem
+    ...
+    Deploying certificate
+    Successfully deployed certificate for test2.experced.ru to /etc/nginx/sites-enabled/sni.conf
+    Congratulations! You have successfully enabled HTTPS on https://test2.experced.ru
+    ```
 
-#### 2.5. Финальная конфигурация Nginx для проксирования
-
-1.  Откройте конфигурационный файл Nginx снова:
+8.  Снова откройте конфигурационный файл для редактирования:
 
     ```bash
     nano /etc/nginx/sites-available/sni.conf
     ```
 
-2.  Полностью удалите содержимое файла и вставьте следующую конфигурацию, заменив `доменное имя` на `test2.experced.ru`.
+9.  Замените всё его содержимое на конфигурацию ниже. Замените все вхождения `доменное имя` на ваш домен `test2.experced.ru`.
 
     ```nginx
     server {
@@ -444,7 +512,7 @@ reboot
 
         ssl_protocols TLSv1.2 TLSv1.3;
         ssl_prefer_server_ciphers on;
-        ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384;
+        ssl_ciphers 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384';
         ssl_session_cache shared:SSL:1m;
         ssl_session_timeout 1d;
         ssl_session_tickets off;
@@ -454,7 +522,7 @@ reboot
         set_real_ip_from 127.0.0.1;
         set_real_ip_from ::1;
 
-        root /var/www/html/site;
+        root /var/www/html/site2;
         index index.html;
 
         location / {
@@ -462,113 +530,122 @@ reboot
         }
     }
     ```
+    Сохраните файл и выйдите (`Ctrl+X`, `Y`, `Enter`).
 
-3.  Сохраните и закройте файл.
-
-4.  Проверьте синтаксис конфигурации Nginx:
+10. Проверьте синтаксис конфигурации Nginx:
 
     ```bash
     nginx -t
     ```
-    **Ожидаемый вывод:**
-    > nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
-    > nginx: configuration file /etc/nginx/nginx.conf test is successful
 
-5.  Перезапустите Nginx:
+    **Ожидаемый вывод:**
+    ```
+    nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+    nginx: configuration file /etc/nginx/nginx.conf test is successful
+    ```
+
+11. Перезапустите Nginx:
 
     ```bash
     systemctl restart nginx
     ```
 
-#### 2.6. Установка и настройка 3X-UI
+#### Шаг 2.4: Установка панели 3X-UI
 
-1.  Выполните команду для установки панели 3X-UI:
+1.  Выполните команду в терминале:
+
     ```bash
-    bash <(curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/MHSanaei/3x-ui/master/install.sh)
     ```
 
-2.  В процессе установки скрипт задаст вопросы:
-    *   `Would you like to customize the Panel Port settings? (If not, a random port will be applied) (y/n):` Введите `y`.
-    *   `Please set up the panel port:` Введите `8080`.
+    *   На вопрос `Would you like to customize the Panel Port settings?` ответьте `y`.
+    *   На вопрос `Please set up the panel port:` введите `8080`.
 
     **Ожидаемый вывод (сокращенный):**
-    > ...
-    > Username: fk330PNA2
-    > Password: WsJb3KhbW6zL2d
-    >
-    > Access URL: http://79.137.202.37:8080/fk330pna2/
-    > ...
-    > x-ui v2.1.1 Installation Finished, It's running now...
-    
-3.  Откройте в браузере предоставленный `Access URL` и войдите в панель, используя сгенерированные имя пользователя и пароль.
+    ```
+    ...
+    Username: JvWPPgorsm
+    Password: k330BfNAJ
+    ========================================
+    Access URL: http://79.137.202.37:8080/wacmbNbUhUOVGzGO
+    ========================================
+    ...
+    x-ui v2.1.1 Installation finished, it is running now...
+    ```
 
-4.  **Настройка Inbounds:**
-    *   Перейдите в **Inbounds** и нажмите `+ Add Inbound`.
-    *   **Port:** `443`
-    *   **Security:** `reality`
-    *   **Client:** Нажмите `+`, в поле `Email` введите `Test`.
+#### Шаг 2.5: Настройка панели 3X-UI
+
+1.  Откройте в браузере URL-адрес для доступа к панели, указанный в выводе (в данном случае `http://79.137.202.37:8080/wacmbNbUhUOVGzGO`).
+2.  Введите `Username` и `Password` из терминала (`JvWPPgorsm` и `k330BfNAJ`) и нажмите "Log In".
+3.  Перейдите в раздел "Inbounds" (Входящие).
+4.  Нажмите "Add Inbound".
+5.  Заполните форму:
+    *   **Port (Порт):** `443`
+    *   **Security (Безопасность):** `reality`
     *   **Flow:** `xtls-rprx-vision`
-    *   **uTLS:** `firefox`
-    *   **Target:** `127.0.0.1:9000`
+    *   **Target (Цель):** `127.0.0.1:9000`
     *   **SNI:** `test2.experced.ru`
-    *   Нажмите `Get New Keys`.
-    *   Нажмите **Create**.
+    *   Нажмите "Get New Keys".
+    *   Нажмите "Create".
 
-5.  **Настройка Outbounds:**
-    *   Перейдите в **X-ray Configs → Outbounds**.
-    *   Нажмите `+ Add Outbound`.
-    *   Переключитесь на вкладку **JSON**.
-    *   В поле **Link** вставьте **Subscription URL**, который вы скопировали с **Сервера 1 (СПБ)**. Нажмите значок импорта.
-    *   Нажмите `Add Outbound`.
+6.  Перейдите в "Panel Settings" -> "Xray Configs".
+7.  Нажмите "Outbounds" -> "Add Outbound".
+8.  Переключитесь на вкладку "JSON", вставьте URL-ссылку от клиента с первого сервера (из шага 1.5) и нажмите иконку импорта.
+9.  Нажмите "Add Outbound".
 
-6.  **Настройка Routing Rules:**
-    *   Перейдите в **X-ray Configs → Routing Rules**.
-    *   Нажмите `+ Add Rule`.
-    *   **Network:** `TCP,UDP`
-    *   **Outbound Tag:** `Test` (или как назвался ваш импортированный outbound).
-    *   **Inbound Tags:** `inbound-443`.
-    *   Нажмите `Add Rule`.
+10. Перейдите в "Routing Rules" (Правила маршрутизации).
+    *   Нажмите "Add Rule".
+    *   Заполните форму:
+        *   **Network (Сеть):** Выберите `TCP,UDP`.
+        *   **Inbound Tags (Теги входящих):** `inbound-443`.
+        *   **Outbound Tag (Тег исходящего):** `Test`.
+    *   Нажмите "Add Rule".
 
-7.  Сохраните и перезапустите панель, нажав `Save` и `Restart Panel`.
+11. Сохраните и перезапустите панель: Нажмите "Save", затем "Restart Panel".
 
-8.  **Сброс учетных данных (опционально, показано в видео):**
-    *   Вернитесь в терминал и выполните:
-        ```bash
-        x-ui
-        ```
-    *   Выберите опцию `6` (Reset Username & Password).
-    *   `Are you sure to reset the username and password of the panel? [default n]:` `y`
-    *   `Please set the login username (default is a random username):` `n`
-    *   `Please set the login password (default is a random password):` `n`
-    *   `Do you want to disable currently configured two-factor authentication? (y/n):` `n`
-    *   `Restart the panel, Attention: Restarting the panel will also restart xray [default y]:` `y`
+#### Шаг 2.6: Настройка SSL для панели 3X-UI
 
-    **Ожидаемый вывод (сокращенный):**
-    > Panel login username has been reset to: Jv2NtGfGgcshl3tJk
-    > Panel login password has been reset to: jv2ntgfgcshl3tjk
-    > Please use the new login username and password to access the X-UI panel. Also remember them!
+1.  После перезапуска панели, в браузере перейдите в "Panel Settings".
+2.  Откройте секцию "Certificates".
+3.  В поле "Public Key Path" вставьте путь к вашему сертификату:
+    ```
+    /etc/letsencrypt/live/test2.experced.ru/fullchain.pem
+    ```
+4.  В поле "Private Key Path" вставьте путь к приватному ключу:
+    ```
+    /etc/letsencrypt/live/test2.experced.ru/privkey.pem
+    ```
+5.  Нажмите "Save", затем "Restart Panel" и подтвердите действие.
+6.  Сервер может прервать SSH-соединение. Переподключитесь.
 
-#### 2.7. Настройка TLS и подписок
+#### Шаг 2.7: Изменение учетных данных панели 3X-UI
 
-1.  Войдите в панель 3X-UI с новыми учетными данными.
-2.  Перейдите в **Panel Settings -> Certificates**.
-3.  Скопируйте пути к SSL-сертификатам из терминала (из файла `sni.conf` Сервера 2):
-    *   **Public Key Path:** `/etc/letsencrypt/live/test2.experced.ru/fullchain.pem`
-    *   **Private Key Path:** `/etc/letsencrypt/live/test2.experced.ru/privkey.pem`
-4.  Перейдите во вкладку **Subscription**.
-    *   **Listen Port:** `8443`
-    *   **URI Path:** `/subsbsca/`
-    *   **Public Key Path:** `/etc/letsencrypt/live/test2.experced.ru/fullchain.pem`
-    *   **Private Key Path:** `/etc/letsencrypt/live/test2.experced.ru/privkey.pem`
-5.  Нажмите `Save` и `Restart Panel`.
+1.  В терминале второго сервера выполните команду для доступа к меню управления панелью:
 
----
+    ```bash
+    x-ui
+    ```
 
-### Часть 3. Тестирование соединения
+2.  Выберите опцию `6` (Reset Username & Password).
+3.  Система запросит подтверждение. Введите `y`.
+4.  На следующие два запроса `Set the login username` и `Set the login password` просто нажмите Enter, чтобы сгенерировать случайные данные.
+5.  На вопрос `Do you want to disable currently configured two-factor authentication?` ответьте `n`.
+6.  На вопрос `Restart the panel?` ответьте `y`.
 
-1.  После перезапуска панели перейдите в раздел **Inbounds**.
-2.  Найдите ваше входящее правило (`Client: Test`) и откройте его детали.
-3.  В разделе **Subscription URL** скопируйте URL.
-4.  Импортируйте этот URL в ваш V2Ray-клиент (в видео используется Nekobox).
-5.  После импорта запустите тест задержки (latency test) для добавленного профиля. Тест должен показать успешное соединение и задержку.
-6.  Активируйте профиль и проверьте скорость интернет-соединения через сервис `speedtest.net`. Видео демонстрирует высокую скорость загрузки и выгрузки, что подтверждает корректную работу всей цепочки.
+    **Ожидаемый вывод:**
+    ```
+    Panel login username has been reset to: Jv2WzMOrgoe
+    Panel login password has been reset to: ZvWPPgorsm5hJk
+    Please use the new login username and password to access the X-UI panel. Also remember them!
+    ```
+
+#### Шаг 2.8: Финальная проверка
+
+1.  Откройте в браузере URL-адрес панели, но уже с HTTPS и без порта 8080: `https://test2.experced.ru/wacmbNbUhUOVGzGO`
+2.  Войдите в систему, используя новые учетные данные из терминала (`Jv2WzMOrgoe` и `ZvWPPgorsm5hJk`).
+3.  Перейдите в раздел "Inbounds".
+4.  Найдите клиента "Test", нажмите меню "..." -> "More Information".
+5.  Скопируйте "Subscription URL".
+6.  В клиенте прокси (в видео используется NekoBox) добавьте новую подписку из буфера обмена.
+7.  Проведите тест подключения. Он должен быть успешным.
+8.  Откройте сайт `speedtest.net` и запустите тест. В видео показаны результаты: **Download 871.60 Mbps** и **Upload 410.27 Mbps**.
